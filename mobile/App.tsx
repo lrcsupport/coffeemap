@@ -6,11 +6,15 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 
+import { checkApiKeys } from './app/config/apiKeys';
 import MapScreen from './app/screens/MapScreen';
 import ListScreen from './app/screens/ListScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
 import AddPlaceScreen from './app/screens/AddPlaceScreen';
 import type { RootStackParamList } from './app/types';
+
+// Check API keys on startup
+checkApiKeys();
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
