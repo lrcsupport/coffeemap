@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6F4E37">
+    <meta name="description" content="Find and map coffee shops you follow on Instagram">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>CoffeeMap</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+    <link rel="apple-touch-icon" href="icons/icon-192.svg">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="" />
+
+    <!-- Leaflet Routing Machine CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+
+    <!-- App CSS -->
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+    <!-- Onboarding overlay -->
+    <div id="onboarding" class="onboarding-overlay">
+        <div class="onboarding-content">
+            <div class="onboarding-icon">&#9749;</div>
+            <h1>CoffeeMap</h1>
+            <p class="onboarding-subtitle">Discover coffee shops you already love</p>
+
+            <div class="onboarding-features">
+                <div class="feature">
+                    <span class="feature-icon">&#128229;</span>
+                    <div>
+                        <strong>Import from Instagram</strong>
+                        <p>Use your Instagram data export to find coffee shops and roasteries you follow.</p>
+                    </div>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">&#128506;</span>
+                    <div>
+                        <strong>See Them on a Map</strong>
+                        <p>All your followed coffee accounts, mapped to their real-world locations.</p>
+                    </div>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">&#128205;</span>
+                    <div>
+                        <strong>Get Nearby Alerts</strong>
+                        <p>Receive a notification when you're near a coffee shop you follow.</p>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-lg" onclick="app.completeOnboarding()">Get Started</button>
+        </div>
+    </div>
+
+    <!-- Main app -->
+    <div id="app" class="app-container hidden">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>&#9749; CoffeeMap</h1>
+            <div class="header-actions">
+                <button class="btn-icon" id="btn-locate" title="Center on my location" onclick="app.centerOnUser()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                </button>
+                <button class="btn-icon" id="btn-proximity" title="Toggle proximity alerts" onclick="app.toggleProximityAlerts()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Tab navigation -->
+        <nav class="tab-bar">
+            <button class="tab active" data-tab="map" onclick="app.switchTab('map')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/></svg>
+                <span>Map</span>
+            </button>
+            <button class="tab" data-tab="list" onclick="app.switchTab('list')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                <span>List</span>
+            </button>
+            <button class="tab" data-tab="import" onclick="app.switchTab('import')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Import</span>
+            </button>
+            <button class="tab" data-tab="settings" onclick="app.switchTab('settings')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span>Settings</span>
+            </button>
+        </nav>
+
+        <!-- Tab panels -->
+        <div class="tab-panels">
+            <!-- Map panel -->
+            <div id="panel-map" class="tab-panel active">
+                <div class="map-search">
+                    <input type="text" id="map-search" placeholder="Search coffee shops..." oninput="app.filterAccounts(this.value)" />
+                </div>
+                <div id="map" class="map-container"></div>
+                <!-- Geocoding floating status -->
+                <div id="geocoding-status" class="geocoding-status hidden">
+                    <div class="geocoding-progress">
+                        <div class="progress-bar"><div class="progress-fill" id="geocoding-progress-fill"></div></div>
+                        <span id="geocoding-progress-text">0/0</span>
+                    </div>
+                    <span id="geocoding-current"></span>
+                </div>
+            </div>
+
+            <!-- List panel -->
+            <div id="panel-list" class="tab-panel">
+                <div class="list-container">
+                    <div id="coffee-list" class="coffee-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">&#9749;</div>
+                            <h3>No Coffee Shops Yet</h3>
+                            <p>Import your Instagram data to find coffee shops you follow.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import panel -->
+            <div id="panel-import" class="tab-panel">
+                <div class="import-container">
+                    <div class="card">
+                        <h3>&#8505; How to Import</h3>
+                        <ol class="import-steps">
+                            <li>Open Instagram &rarr; Settings &rarr; Your Activity &rarr; Download Your Information</li>
+                            <li>Request your data in <strong>JSON</strong> format</li>
+                            <li>Wait for Instagram to prepare your download (may take up to 48 hours)</li>
+                            <li>Download and extract the ZIP file</li>
+                            <li>Find <code>following.json</code> in <code>connections/followers_and_following/</code></li>
+                            <li>Click "Import File" below and select that JSON file</li>
+                        </ol>
+                    </div>
+
+                    <div class="import-actions">
+                        <label class="btn btn-primary btn-lg btn-file">
+                            &#128229; Import File
+                            <input type="file" id="file-input" accept=".json" onchange="app.handleFileImport(event)" hidden />
+                        </label>
+                    </div>
+
+                    <div id="import-status" class="import-status hidden"></div>
+
+                    <!-- Account review list -->
+                    <div id="account-review" class="account-review hidden">
+                        <div class="review-header">
+                            <h3>Your Accounts (<span id="account-count">0</span>)</h3>
+                            <span id="coffee-count" class="badge">0 coffee shops</span>
+                        </div>
+                        <p class="review-hint">Toggle accounts that are coffee shops or roasteries. Auto-detected by username keywords.</p>
+                        <div id="account-list" class="account-list"></div>
+                        <button class="btn btn-success btn-lg" id="btn-geocode" onclick="app.startGeocoding()">
+                            &#128270; Find Locations
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings panel -->
+            <div id="panel-settings" class="tab-panel">
+                <div class="settings-container">
+                    <div class="card">
+                        <h3>Proximity Alerts</h3>
+                        <div class="setting-row">
+                            <label>Enable alerts when near coffee shops</label>
+                            <label class="switch">
+                                <input type="checkbox" id="setting-proximity" onchange="app.toggleProximityAlerts()" />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-row" id="radius-setting" style="display:none">
+                            <label>Alert radius: <span id="radius-value">200</span>m</label>
+                            <input type="range" id="setting-radius" min="100" max="1000" step="50" value="200"
+                                   oninput="app.updateRadius(this.value)" />
+                        </div>
+                        <p class="setting-hint">You'll receive a browser notification when you're within range of a followed coffee shop.</p>
+                    </div>
+
+                    <div class="card">
+                        <h3>Data</h3>
+                        <div class="setting-row">
+                            <span>Coffee shops</span>
+                            <span id="stat-coffee" class="stat">0</span>
+                        </div>
+                        <div class="setting-row">
+                            <span>Located</span>
+                            <span id="stat-located" class="stat">0</span>
+                        </div>
+                        <div class="setting-row">
+                            <span>Pending</span>
+                            <span id="stat-pending" class="stat">0</span>
+                        </div>
+                        <button class="btn btn-danger" onclick="app.clearAllData()">Clear All Data</button>
+                    </div>
+
+                    <div class="card">
+                        <h3>About</h3>
+                        <p>CoffeeMap v1.0</p>
+                        <p class="setting-hint">Find coffee shops and roasteries you follow on Instagram, mapped to their real-world locations.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account detail modal -->
+        <div id="detail-modal" class="modal hidden">
+            <div class="modal-content">
+                <button class="modal-close" onclick="app.closeDetail()">&times;</button>
+                <div id="detail-body"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <!-- Leaflet Routing Machine -->
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+    <!-- App JS -->
+    <script src="js/import.js"></script>
+    <script src="js/geocoding.js"></script>
+    <script src="js/location.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/app.js"></script>
+
+    <!-- PWA Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.warn('SW registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
