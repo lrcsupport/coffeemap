@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coffeemap-v1';
+const CACHE_NAME = 'coffeemap-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

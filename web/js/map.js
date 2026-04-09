@@ -84,6 +84,12 @@ const CoffeeMap = {
         }
     },
 
+    flyTo(lat, lng, zoom) {
+        if (this.map) {
+            this.map.flyTo([lat, lng], zoom || 15, { duration: 1.2 });
+        }
+    },
+
     /**
      * Adds or updates a coffee shop marker on the map.
      */

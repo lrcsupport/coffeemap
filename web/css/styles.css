@@ -351,6 +351,36 @@ body {
     font-size: 0.85rem;
 }
 
+/* ---- Quick Add ---- */
+.quick-add-card {
+    border: 2px solid var(--brown);
+    background: var(--brown-bg);
+}
+.quick-add-row {
+    display: flex;
+    gap: 8px;
+}
+.quick-add-input {
+    flex: 1;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+}
+.quick-add-input::placeholder { color: var(--text-tertiary); }
+.btn-sm { font-size: 0.85rem; padding: 8px 12px; }
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-outline:hover { background: var(--bg-secondary); }
+
 .import-actions { display: flex; justify-content: center; }
 
 .import-status {

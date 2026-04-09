@@ -21,6 +21,9 @@ const app = {
             document.getElementById('app').classList.remove('hidden');
             this.initApp();
         }
+
+        // Handle share target / URL params (works even before onboarding is complete)
+        this.handleShareTarget();
     },
 
     completeOnboarding() {
@@ -584,6 +587,161 @@ const app = {
         statusEl.classList.remove('hidden', 'loading', 'error');
         statusEl.classList.add('success');
         statusEl.textContent = 'All data cleared.';
+    },
+
+    // ========================
+    // Quick Add (from Instagram share / paste / type)
+    // ========================
+
+    /**
+     * Extracts an Instagram handle from various input formats:
+     * - @username
+     * - username
+     * - https://www.instagram.com/username/
+     * - https://instagram.com/username?igsh=...
+     * - instagram.com/username
+     */
+    extractHandle(input) {
+        if (!input) return null;
+        input = input.trim();
+
+        // If the input contains an instagram URL, extract the handle
+        const urlMatch = input.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9_.]+)/i);
+        if (urlMatch) return urlMatch[1].toLowerCase();
+
+        // Strip @ prefix
+        if (input.startsWith('@')) input = input.substring(1);
+
+        // Validate as a handle (letters, numbers, dots, underscores)
+        if (/^[A-Za-z0-9_.]{1,30}$/.test(input)) return input.toLowerCase();
+
+        return null;
+    },
+
+    async quickAddHandle(handleOverride) {
+        const inputEl = document.getElementById('quick-add-input');
+        const statusEl = document.getElementById('quick-add-status');
+        const raw = handleOverride || inputEl.value;
+        const handle = this.extractHandle(raw);
+
+        if (!handle) {
+            statusEl.classList.remove('hidden', 'success', 'loading');
+            statusEl.classList.add('error');
+            statusEl.textContent = 'Could not find an Instagram username. Paste a profile URL or type a handle.';
+            return;
+        }
+
+        // Check for duplicate
+        if (this.accounts.some(a => a.username === handle)) {
+            statusEl.classList.remove('hidden', 'loading', 'error');
+            statusEl.classList.add('success');
+            statusEl.textContent = `@${handle} is already in your list!`;
+
+            // Highlight existing account on map
+            const existing = this.accounts.find(a => a.username === handle);
+            if (existing && existing.location) {
+                this.switchTab('map');
+                CoffeeMap.flyTo(existing.location.latitude, existing.location.longitude);
+            }
+            return;
+        }
+
+        // Show loading
+        statusEl.classList.remove('hidden', 'success', 'error');
+        statusEl.classList.add('loading');
+        statusEl.textContent = `Adding @${handle}...`;
+
+        // Create account entry
+        const account = {
+            username: handle,
+            profileURL: `https://www.instagram.com/${handle}/`,
+            followTimestamp: new Date(),
+            isCoffeeShop: true,
+            isHidden: false,
+            location: null,
+            geocodingStatus: 'pending',
+        };
+
+        this.accounts.push(account);
+        this.saveState();
+
+        // Try geocoding immediately
+        try {
+            await Geocoding.geocodeBatch(
+                this.accounts,
+                LocationService.currentPosition,
+                () => {} // silent progress
+            );
+            this.saveState();
+        } catch (e) {
+            console.warn('Quick-add geocoding failed:', e);
+        }
+
+        // Update UI
+        this.renderAccountReview();
+        this.renderMarkers();
+        this.renderList();
+        this.updateStats();
+
+        const added = this.accounts.find(a => a.username === handle);
+        if (added && added.location) {
+            statusEl.classList.remove('loading');
+            statusEl.classList.add('success');
+            statusEl.textContent = `☕ @${handle} added and located!`;
+            // Pan to the new marker
+            setTimeout(() => {
+                this.switchTab('map');
+                CoffeeMap.flyTo(added.location.latitude, added.location.longitude);
+            }, 800);
+        } else {
+            statusEl.classList.remove('loading');
+            statusEl.classList.add('success');
+            statusEl.textContent = `@${handle} added! Location pending — try "Find Locations" to geocode.`;
+        }
+
+        inputEl.value = '';
+    },
+
+    async pasteFromClipboard() {
+        const inputEl = document.getElementById('quick-add-input');
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                inputEl.value = text;
+                this.quickAddHandle(text);
+            }
+        } catch (e) {
+            // Clipboard API may be blocked — fall back to prompt
+            const text = prompt('Paste an Instagram URL or handle:');
+            if (text) {
+                inputEl.value = text;
+                this.quickAddHandle(text);
+            }
+        }
+    },
+
+    /**
+     * Handle incoming share target or URL params.
+     * Called on init — checks if the app was opened via share_target or a direct URL
+     * like ?url=https://instagram.com/somecoffee or ?text=...
+     */
+    handleShareTarget() {
+        const params = new URLSearchParams(window.location.search);
+        const sharedText = params.get('text') || params.get('url') || params.get('title') || '';
+
+        if (!sharedText) return;
+
+        // Clean URL so reload doesn't re-trigger
+        window.history.replaceState({}, '', '/');
+
+        const handle = this.extractHandle(sharedText);
+        if (handle) {
+            // Switch to import tab and auto-fill + auto-add
+            this.switchTab('import');
+            const inputEl = document.getElementById('quick-add-input');
+            if (inputEl) inputEl.value = sharedText;
+            this.quickAddHandle(sharedText);
+        }
     },
 
     // ========================

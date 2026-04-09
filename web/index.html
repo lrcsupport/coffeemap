@@ -130,8 +130,24 @@
             <!-- Import panel -->
             <div id="panel-import" class="tab-panel">
                 <div class="import-container">
+                    <!-- Quick Add from Instagram -->
+                    <div class="card quick-add-card">
+                        <h3>☕ Quick Add from Instagram</h3>
+                        <p class="setting-hint">Paste an Instagram URL or username from the share button, or type a handle directly.</p>
+                        <div class="quick-add-row">
+                            <input type="text" id="quick-add-input" class="quick-add-input"
+                                   placeholder="@username or instagram.com/username"
+                                   autocapitalize="none" autocorrect="off" spellcheck="false" />
+                            <button class="btn btn-primary" id="btn-quick-add" onclick="app.quickAddHandle()">Add</button>
+                        </div>
+                        <button class="btn btn-sm btn-outline" id="btn-paste-clipboard" onclick="app.pasteFromClipboard()" style="margin-top:8px; width:100%;">
+                            📋 Paste from Clipboard
+                        </button>
+                        <div id="quick-add-status" class="import-status hidden" style="margin-top:12px;"></div>
+                    </div>
+
                     <div class="card">
-                        <h3>&#8505; How to Import</h3>
+                        <h3>&#8505; Bulk Import from Data Export</h3>
                         <ol class="import-steps">
                             <li>Open Instagram &rarr; Settings &rarr; Your Activity &rarr; Download Your Information</li>
                             <li>Request your data in <strong>JSON</strong> format</li>

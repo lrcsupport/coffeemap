@@ -23,5 +23,14 @@
   ],
   "categories": ["food", "lifestyle", "social"],
   "screenshots": [],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "share_target": {
+    "action": "/?shared=true",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
