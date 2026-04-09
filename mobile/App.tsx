@@ -11,6 +11,7 @@ import MapScreen from './app/screens/MapScreen';
 import ListScreen from './app/screens/ListScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
 import AddPlaceScreen from './app/screens/AddPlaceScreen';
+import PlaceDetailScreen from './app/screens/PlaceDetailScreen';
 import type { RootStackParamList } from './app/types';
 
 // Check API keys on startup
@@ -109,6 +110,17 @@ export default function App() {
             headerStyle: { backgroundColor: '#1a1a1a' },
             headerTintColor: '#F5A623',
             headerTitle: 'Add Place',
+            headerTitleStyle: { fontWeight: '700' },
+          }}
+        />
+        <Stack.Screen
+          name="PlaceDetail"
+          component={PlaceDetailScreen}
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: '#1a1a1a' },
+            headerTintColor: '#F5A623',
+            headerTitle: 'Place Details',
             headerTitleStyle: { fontWeight: '700' },
           }}
         />

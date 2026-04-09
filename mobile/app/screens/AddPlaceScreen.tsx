@@ -10,7 +10,9 @@ import {
   Platform,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, PlaceCategory } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import type { RootStackParamList, PlaceCategory, Place } from '../types';
+import { CATEGORY_META } from '../types';
 import { parseInstagramProfile, type ParsedProfile } from '../utils/instagramParser';
 import {
   geocodePlace,
@@ -19,6 +21,7 @@ import {
   formatRating,
   type GeocodedPlace,
 } from '../utils/geocoder';
+import { savePlace } from '../utils/storage';
 
 // Conditionally import MapView — not available on web
 let MapView: any = null;
@@ -36,13 +39,12 @@ if (Platform.OS !== 'web') {
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPlace'>;
 
 const CATEGORIES: { label: string; value: PlaceCategory; emoji: string }[] = [
-  { label: 'Coffee Shop', value: 'coffee_shop', emoji: '☕' },
-  { label: 'Roastery', value: 'roastery', emoji: '🫘' },
-  { label: 'Cafe', value: 'cafe', emoji: '🍵' },
+  { label: 'Coffee', value: 'coffee', emoji: '☕' },
   { label: 'Brewery', value: 'brewery', emoji: '🍺' },
   { label: 'Distillery', value: 'distillery', emoji: '🥃' },
   { label: 'Winery', value: 'winery', emoji: '🍷' },
   { label: 'Restaurant', value: 'restaurant', emoji: '🍽️' },
+  { label: 'Other', value: 'unknown', emoji: '📍' },
 ];
 
 type LoadingPhase = 'idle' | 'parsing' | 'geocoding' | 'done';
@@ -53,7 +55,7 @@ export default function AddPlaceScreen({ route, navigation }: Props) {
   // Form state
   const [handle, setHandle] = useState(initialHandle);
   const [displayName, setDisplayName] = useState('');
-  const [category, setCategory] = useState<PlaceCategory>('coffee_shop');
+  const [category, setCategory] = useState<PlaceCategory>('coffee');
   const [location, setLocation] = useState('');
   const [emoji, setEmoji] = useState('☕');
   const [manualAddress, setManualAddress] = useState('');
@@ -132,24 +134,29 @@ export default function AddPlaceScreen({ route, navigation }: Props) {
     setAddressSearching(false);
   };
 
-  const handleSave = () => {
-    console.log('Save place:', {
-      handle,
-      displayName,
+  const handleSave = async () => {
+    if (!handle) return;
+
+    const newPlace: Place = {
+      id: uuidv4(),
+      name: displayName || handle,
+      formattedAddress: geocodedPlace?.formattedAddress ?? location ?? '',
+      lat: geocodedPlace?.lat ?? 0,
+      lng: geocodedPlace?.lng ?? 0,
+      instagramHandle: handle,
       category,
       emoji,
-      location,
-      lat: geocodedPlace?.lat,
-      lng: geocodedPlace?.lng,
-      placeId: geocodedPlace?.placeId,
-      phoneNumber: geocodedPlace?.phoneNumber,
-      website: geocodedPlace?.website ?? parsedProfile?.website,
-      rating: geocodedPlace?.rating,
-      priceLevel: geocodedPlace?.priceLevel,
-      openingHours: geocodedPlace?.openingHours,
-      bio: parsedProfile?.bio,
-      followerCount: parsedProfile?.followerCount,
-    });
+      placeId: geocodedPlace?.placeId ?? null,
+      website: geocodedPlace?.website ?? parsedProfile?.website ?? null,
+      phoneNumber: geocodedPlace?.phoneNumber ?? null,
+      rating: geocodedPlace?.rating ?? null,
+      notes: null,
+      savedAt: new Date().toISOString(),
+      visited: false,
+      visitedAt: null,
+    };
+
+    await savePlace(newPlace);
     navigation.goBack();
   };
 

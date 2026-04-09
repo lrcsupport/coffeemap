@@ -23,20 +23,14 @@ type CategoryRule = {
 
 const CATEGORY_RULES: CategoryRule[] = [
   {
-    category: 'coffee_shop',
+    category: 'coffee',
     emoji: '☕',
     keywords: [
       'roast', 'espresso', 'café', 'cafe', 'coffee', 'brew', 'barista',
       'latte', 'pour over', 'pourover', 'specialty', 'cappuccino', 'mocha',
       'drip', 'bean', 'beans', 'coffeehouse', 'coffeeshop', 'third wave',
-      'thirdwave',
-    ],
-  },
-  {
-    category: 'roastery',
-    emoji: '🫘',
-    keywords: [
-      'roaster', 'roastery', 'roasting', 'micro roast', 'small batch roast',
+      'thirdwave', 'roaster', 'roastery', 'roasting', 'micro roast',
+      'small batch roast',
     ],
   },
   {
@@ -73,8 +67,8 @@ const CATEGORY_RULES: CategoryRule[] = [
   },
 ];
 
-const DEFAULT_CATEGORY: PlaceCategory = 'cafe';
-const DEFAULT_EMOJI = '🍵';
+const DEFAULT_CATEGORY: PlaceCategory = 'unknown';
+const DEFAULT_EMOJI = '📍';
 
 /**
  * Detects category from bio text and handle keywords.
