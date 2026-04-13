@@ -1,11 +1,15 @@
 /**
  * CoffeeMap — Main App Controller
- * Manages state, UI updates, localStorage persistence, and coordinates all modules.
+ * Manages state, UI updates, persistence (localStorage + Supabase), and coordinates all modules.
  */
 const app = {
     accounts: [],
     currentTab: 'map',
     searchQuery: '',
+
+    // Supabase config — set these to enable cloud sync
+    SUPABASE_URL: '',
+    SUPABASE_ANON_KEY: '',
 
     // ========================
     // Initialization
@@ -13,6 +17,17 @@ const app = {
 
     init() {
         this.loadState();
+
+        // Initialize Supabase auth if configured
+        if (this.SUPABASE_URL && this.SUPABASE_ANON_KEY) {
+            Auth.init(this.SUPABASE_URL, this.SUPABASE_ANON_KEY);
+            Auth.onAuthChange((event, user, profile) => {
+                this.updateAuthUI(user, profile);
+                if (user && event === 'SIGNED_IN') {
+                    this.syncFromCloud();
+                }
+            });
+        }
 
         if (localStorage.getItem('onboarding_complete')) {
             document.getElementById('onboarding').classList.add('hidden');
@@ -51,19 +66,97 @@ const app = {
         LocationService.alertRadius = radius;
         LocationService.proximityAlerts = proximityEnabled;
 
-        // Load Google API key
-        const googleKey = localStorage.getItem('google_api_key');
-        if (googleKey) {
-            Geocoding.setGoogleApiKey(googleKey);
-            const keyInput = document.getElementById('setting-google-key');
-            if (keyInput) keyInput.value = googleKey;
-        }
-
         // Render existing data
         this.renderMarkers();
         this.renderList();
         this.renderRecentAdds();
         this.updateStats();
+    },
+
+    // ========================
+    // Auth UI
+    // ========================
+
+    updateAuthUI(user, profile) {
+        const signedOut = document.getElementById('auth-signed-out');
+        const signedIn = document.getElementById('auth-signed-in');
+        const avatar = document.getElementById('auth-avatar');
+        const defaultIcon = document.getElementById('auth-icon-default');
+        const authBtn = document.getElementById('btn-auth');
+
+        if (!signedOut || !signedIn) return;
+
+        if (user) {
+            signedOut.classList.add('hidden');
+            signedIn.classList.remove('hidden');
+
+            document.getElementById('auth-email').textContent = user.email || '';
+
+            const tier = Auth.getTier();
+            const tierEl = document.getElementById('auth-tier');
+            tierEl.textContent = tier === 'pro' ? 'Pro' : 'Free';
+            tierEl.className = 'stat tier-badge' + (tier === 'pro' ? ' tier-pro' : '');
+
+            const limit = Auth.getPlacesLimit();
+            const count = this.accounts.length;
+            document.getElementById('auth-usage').textContent =
+                limit === Infinity ? `${count}` : `${count} / ${limit}`;
+
+            // Avatar
+            const avatarUrl = user.user_metadata?.avatar_url;
+            if (avatarUrl && avatar) {
+                avatar.src = avatarUrl;
+                avatar.classList.remove('hidden');
+                if (defaultIcon) defaultIcon.classList.add('hidden');
+            }
+
+            if (authBtn) authBtn.title = 'Account';
+        } else {
+            signedOut.classList.remove('hidden');
+            signedIn.classList.add('hidden');
+
+            if (avatar) avatar.classList.add('hidden');
+            if (defaultIcon) defaultIcon.classList.remove('hidden');
+            if (authBtn) authBtn.title = 'Sign in';
+        }
+    },
+
+    handleAuthClick() {
+        if (Auth.isSignedIn()) {
+            this.switchTab('settings');
+        } else {
+            this.switchTab('settings');
+        }
+    },
+
+    async handleSignOut() {
+        await Auth.signOut();
+        this.updateAuthUI(null, null);
+    },
+
+    // ========================
+    // Cloud Sync
+    // ========================
+
+    async syncFromCloud() {
+        if (!Auth.isSignedIn()) return;
+
+        try {
+            const cloudPlaces = await Auth.fetchPlaces();
+            if (cloudPlaces.length > 0) {
+                // Merge: cloud is source of truth, but keep local-only entries
+                const cloudUsernames = new Set(cloudPlaces.map(p => p.username));
+                const localOnly = this.accounts.filter(a => !cloudUsernames.has(a.username));
+                this.accounts = [...cloudPlaces, ...localOnly];
+                this.saveState();
+                this.renderMarkers();
+                this.renderList();
+                this.renderRecentAdds();
+                this.updateStats();
+            }
+        } catch (e) {
+            console.warn('[App] Cloud sync failed:', e);
+        }
     },
 
     // ========================
@@ -107,7 +200,12 @@ const app = {
         if (tab === 'map') CoffeeMap.refresh();
         if (tab === 'list') this.renderList();
         if (tab === 'add') this.renderRecentAdds();
-        if (tab === 'settings') this.updateStats();
+        if (tab === 'settings') {
+            this.updateStats();
+            if (Auth.isSignedIn()) {
+                this.updateAuthUI(Auth.user, Auth.profile);
+            }
+        }
     },
 
     // ========================
@@ -158,6 +256,15 @@ const app = {
             return;
         }
 
+        // Check tier limit if signed in
+        if (Auth.isSignedIn()) {
+            const canAdd = await Auth.canAddPlace();
+            if (!canAdd) {
+                this.showUpgrade();
+                return;
+            }
+        }
+
         // Show loading
         statusEl.className = 'add-status loading';
         statusEl.textContent = `Looking up @${handle}...`;
@@ -176,14 +283,33 @@ const app = {
         this.accounts.push(account);
         this.saveState();
 
-        // Geocode immediately
+        // Geocode — use server-side if signed in, client-side otherwise
         try {
-            await Geocoding.geocodeOne(account, LocationService.currentPosition);
+            if (Auth.isSignedIn()) {
+                const pos = LocationService.currentPosition;
+                const location = await Auth.geocode(handle, pos?.lat, pos?.lng);
+                if (location) {
+                    account.location = location;
+                    account.geocodingStatus = 'resolved';
+                } else {
+                    account.geocodingStatus = 'failed';
+                }
+            } else {
+                await Geocoding.geocodeOne(account, LocationService.currentPosition);
+            }
             this.saveState();
         } catch (e) {
             console.warn('Geocoding failed for @' + handle, e);
             account.geocodingStatus = 'failed';
             this.saveState();
+        }
+
+        // Save to cloud if signed in
+        if (Auth.isSignedIn()) {
+            const result = await Auth.savePlace(account);
+            if (result.error === 'limit_reached') {
+                this.showUpgrade();
+            }
         }
 
         // Update all UI
@@ -246,6 +372,27 @@ const app = {
             if (inputEl) inputEl.value = sharedText;
             this.quickAddHandle(sharedText);
         }
+    },
+
+    // ========================
+    // Upgrade Modal
+    // ========================
+
+    showUpgrade() {
+        const limit = Auth.getPlacesLimit();
+        const limitEl = document.getElementById('upgrade-limit');
+        if (limitEl) limitEl.textContent = limit;
+        document.getElementById('upgrade-modal').classList.remove('hidden');
+    },
+
+    closeUpgrade() {
+        document.getElementById('upgrade-modal').classList.add('hidden');
+    },
+
+    upgradeToPro() {
+        // Placeholder — will integrate Stripe/RevenueCat later
+        alert('Pro upgrades coming soon! Stay tuned.');
+        this.closeUpgrade();
     },
 
     // ========================
@@ -504,10 +651,16 @@ const app = {
         window.open(url, '_blank');
     },
 
-    removePlace(username) {
+    async removePlace(username) {
         if (!confirm(`Remove @${username} from your saved places?`)) return;
         this.accounts = this.accounts.filter(a => a.username !== username);
         this.saveState();
+
+        // Remove from cloud too
+        if (Auth.isSignedIn()) {
+            await Auth.deletePlace(username);
+        }
+
         this.closeDetail();
         this.renderMarkers();
         this.renderList();
@@ -544,17 +697,6 @@ const app = {
     // Settings
     // ========================
 
-    saveGoogleApiKey(value) {
-        const key = value.trim();
-        if (key) {
-            localStorage.setItem('google_api_key', key);
-            Geocoding.setGoogleApiKey(key);
-        } else {
-            localStorage.removeItem('google_api_key');
-            Geocoding.setGoogleApiKey(null);
-        }
-    },
-
     updateStats() {
         const all = this.accounts.filter(a => a.isCoffeeShop && !a.isHidden);
         const located = all.filter(a => a.location);
@@ -585,10 +727,24 @@ const app = {
         btn.disabled = true;
         btn.textContent = 'Retrying...';
 
-        // Reset failed accounts to pending
-        failed.forEach(a => { a.geocodingStatus = 'pending'; });
+        for (const account of failed) {
+            account.geocodingStatus = 'pending';
 
-        await Geocoding.geocodeBatch(this.accounts, LocationService.currentPosition, () => {});
+            if (Auth.isSignedIn()) {
+                const pos = LocationService.currentPosition;
+                const location = await Auth.geocode(account.username, pos?.lat, pos?.lng);
+                if (location) {
+                    account.location = location;
+                    account.geocodingStatus = 'resolved';
+                } else {
+                    account.geocodingStatus = 'failed';
+                }
+                await Auth.savePlace(account);
+            } else {
+                await Geocoding.geocodeOne(account, LocationService.currentPosition);
+            }
+        }
+
         this.saveState();
         this.renderMarkers();
         this.renderList();
@@ -598,8 +754,15 @@ const app = {
         btn.disabled = false;
     },
 
-    clearAllData() {
+    async clearAllData() {
         if (!confirm('Are you sure? This will remove all saved places.')) return;
+
+        // Delete from cloud if signed in
+        if (Auth.isSignedIn()) {
+            for (const account of this.accounts) {
+                await Auth.deletePlace(account.username);
+            }
+        }
 
         this.accounts = [];
         this.saveState();
@@ -641,8 +804,9 @@ document.addEventListener('DOMContentLoaded', () => app.init());
 
 // Handle modal close on backdrop click
 document.addEventListener('click', (e) => {
-    if (e.target.id === 'detail-modal') {
-        app.closeDetail();
+    if (e.target.id === 'detail-modal' || e.target.id === 'upgrade-modal') {
+        if (e.target.id === 'detail-modal') app.closeDetail();
+        if (e.target.id === 'upgrade-modal') app.closeUpgrade();
     }
 });
 
@@ -650,5 +814,6 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         app.closeDetail();
+        app.closeUpgrade();
     }
 });

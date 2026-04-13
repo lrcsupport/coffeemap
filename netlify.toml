@@ -2,6 +2,10 @@
   publish = "web/"
   command = "echo 'Static site - no build needed'"
 
+[[edge_functions]]
+  function = "geocode"
+  path = "/api/geocode"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

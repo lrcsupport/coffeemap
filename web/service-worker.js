@@ -1,8 +1,9 @@
-const CACHE_NAME = 'coffeemap-v3';
+const CACHE_NAME = 'coffeemap-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/styles.css',
+  '/js/auth.js',
   '/js/app.js',
   '/js/geocoding.js',
   '/js/location.js',
@@ -14,7 +15,8 @@ const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css',
-  'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js'
+  'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
 ];
 
 // Install: cache static assets
@@ -45,10 +47,18 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET requests
+  // Skip non-GET requests (POST to /api/geocode, Supabase mutations, etc.)
   if (event.request.method !== 'GET') return;
 
-  // Network-first for API/geocoding requests
+  // Never cache Supabase auth callbacks or API endpoints
+  if (url.pathname.startsWith('/api/') ||
+      url.hostname.includes('supabase.co') ||
+      url.hostname.includes('supabase.in')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Network-first for geocoding requests
   if (url.hostname === 'nominatim.openstreetmap.org' ||
       url.hostname === 'places.googleapis.com') {
     event.respondWith(
