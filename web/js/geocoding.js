@@ -1,8 +1,8 @@
 /**
  * Geocoding Module
  * Resolves Instagram usernames to physical locations using:
- * 1. Nominatim (OpenStreetMap) — free, no API key needed
- * 2. Google Places Text Search API — optional, better results
+ * 1. Google Places Text Search API — best results (if API key configured)
+ * 2. Nominatim (OpenStreetMap) — free fallback, no API key needed
  */
 const Geocoding = {
     NOMINATIM_DELAY_MS: 1100, // Nominatim rate limit: 1 req/sec
@@ -13,34 +13,50 @@ const Geocoding = {
      * Set Google Places API key for enhanced geocoding.
      */
     setGoogleApiKey(key) {
-        this.googleApiKey = key && key !== 'YOUR_GOOGLE_PLACES_API_KEY' ? key : null;
+        this.googleApiKey = key && key.trim() && key !== 'YOUR_GOOGLE_PLACES_API_KEY' ? key.trim() : null;
     },
 
     /**
      * Geocodes a username to a location using tiered fallback.
-     * @param {string} username - Instagram username
-     * @param {object|null} userLocation - { lat, lng } for proximity bias
-     * @returns {Promise<object|null>} Location result or null
+     * Tries Google Places first (better results), then Nominatim.
      */
     async geocode(username, userLocation = null) {
         const query = this.formatQuery(username);
 
-        // Tier 1: Nominatim
-        const nominatimResult = await this.searchNominatim(query, userLocation);
-        if (nominatimResult) return nominatimResult;
-
-        // Tier 2: Google Places (if configured)
+        // Tier 1: Google Places (if configured) — much better for business names
         if (this.googleApiKey) {
-            await this.delay(this.GOOGLE_DELAY_MS);
             const googleResult = await this.searchGooglePlaces(query, userLocation);
             if (googleResult) return googleResult;
+
+            // Try a broader search without type restriction
+            const broadResult = await this.searchGooglePlacesBroad(query, userLocation);
+            if (broadResult) return broadResult;
         }
+
+        // Tier 2: Nominatim
+        await this.delay(this.NOMINATIM_DELAY_MS);
+        const nominatimResult = await this.searchNominatim(query, userLocation);
+        if (nominatimResult) return nominatimResult;
 
         return null;
     },
 
     /**
-     * Geocodes a batch of accounts with progress callbacks.
+     * Geocodes a single account. Used for quick-add flow.
+     */
+    async geocodeOne(account, userLocation) {
+        const result = await this.geocode(account.username, userLocation);
+        if (result) {
+            account.location = result;
+            account.geocodingStatus = 'resolved';
+        } else {
+            account.geocodingStatus = 'failed';
+        }
+        return account;
+    },
+
+    /**
+     * Geocodes a batch of pending accounts with progress callbacks.
      */
     async geocodeBatch(accounts, userLocation, onProgress) {
         const pending = accounts.filter(a => a.isCoffeeShop && !a.isHidden && a.geocodingStatus === 'pending');
@@ -56,14 +72,7 @@ const Geocoding = {
                 });
             }
 
-            const result = await this.geocode(account.username, userLocation);
-
-            if (result) {
-                account.location = result;
-                account.geocodingStatus = 'resolved';
-            } else {
-                account.geocodingStatus = 'failed';
-            }
+            await this.geocodeOne(account, userLocation);
 
             completed++;
             if (onProgress) {
@@ -75,8 +84,8 @@ const Geocoding = {
                 });
             }
 
-            // Rate limit
-            await this.delay(this.NOMINATIM_DELAY_MS);
+            // Rate limit between requests
+            await this.delay(this.googleApiKey ? this.GOOGLE_DELAY_MS : this.NOMINATIM_DELAY_MS);
         }
 
         return accounts;
@@ -133,17 +142,32 @@ const Geocoding = {
     },
 
     /**
-     * Searches Google Places Text Search API.
+     * Searches Google Places Text Search API with cafe type hint.
      */
     async searchGooglePlaces(query, userLocation) {
+        return this._googleSearch(query, userLocation, 'cafe');
+    },
+
+    /**
+     * Searches Google Places without type restriction (broader match).
+     */
+    async searchGooglePlacesBroad(query, userLocation) {
+        await this.delay(this.GOOGLE_DELAY_MS);
+        return this._googleSearch(query, userLocation, null);
+    },
+
+    async _googleSearch(query, userLocation, includedType) {
         if (!this.googleApiKey) return null;
 
         try {
             const body = {
                 textQuery: query,
-                includedType: 'cafe',
                 maxResultCount: 5
             };
+
+            if (includedType) {
+                body.includedType = includedType;
+            }
 
             if (userLocation) {
                 body.locationBias = {
@@ -164,7 +188,10 @@ const Geocoding = {
                 body: JSON.stringify(body)
             });
 
-            if (!response.ok) return null;
+            if (!response.ok) {
+                console.warn('Google Places API error:', response.status);
+                return null;
+            }
 
             const data = await response.json();
             const place = data.places?.[0];
@@ -192,6 +219,10 @@ const Geocoding = {
 
     /**
      * Converts an Instagram username into a more searchable query.
+     * Examples:
+     *   "bluebottlecoffee" -> "blue bottle coffee"
+     *   "stumptown_coffee" -> "stumptown coffee"
+     *   "theroastery.nyc"  -> "the roastery nyc"
      */
     formatQuery(username) {
         let query = username
@@ -199,11 +230,16 @@ const Geocoding = {
             .replace(/\./g, ' ')
             .replace(/-/g, ' ');
 
-        const lowered = query.toLowerCase();
-        const hasCoffeeWord = InstagramImport.COFFEE_KEYWORDS.some(kw => lowered.includes(kw));
-        if (!hasCoffeeWord) {
-            query += ' coffee';
-        }
+        // Try to split camelCase / smashed-together words
+        query = query.replace(/([a-z])([A-Z])/g, '$1 $2');
+
+        // Insert spaces before common business suffixes if smashed together
+        query = query.replace(/(coffee|roast|brew|cafe|bakery|kitchen|house|shop|bar|pub|grill|bistro)/gi,
+            (match, p1, offset) => offset > 0 ? ' ' + p1 : p1
+        );
+
+        // Clean up multiple spaces
+        query = query.replace(/\s+/g, ' ').trim();
 
         return query;
     },

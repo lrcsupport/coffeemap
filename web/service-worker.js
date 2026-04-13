@@ -1,10 +1,9 @@
-const CACHE_NAME = 'coffeemap-v2';
+const CACHE_NAME = 'coffeemap-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/styles.css',
   '/js/app.js',
-  '/js/import.js',
   '/js/geocoding.js',
   '/js/location.js',
   '/js/map.js',
@@ -64,7 +63,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for map tiles (they're large and static)
+  // Cache-first for map tiles
   if (url.hostname.includes('tile.openstreetmap.org')) {
     event.respondWith(
       caches.match(event.request).then(cached => {
@@ -84,7 +83,6 @@ self.addEventListener('fetch', event => {
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        // Cache successful responses for our own assets and CDN
         if (response.ok && (url.origin === location.origin ||
             CDN_ASSETS.some(a => event.request.url.startsWith(a.split('?')[0])))) {
           const clone = response.clone();

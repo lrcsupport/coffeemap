@@ -12,17 +12,15 @@ const app = {
     // ========================
 
     init() {
-        // Load saved state
         this.loadState();
 
-        // Check onboarding
         if (localStorage.getItem('onboarding_complete')) {
             document.getElementById('onboarding').classList.add('hidden');
             document.getElementById('app').classList.remove('hidden');
             this.initApp();
         }
 
-        // Handle share target / URL params (works even before onboarding is complete)
+        // Handle share target / URL params
         this.handleShareTarget();
     },
 
@@ -34,10 +32,8 @@ const app = {
     },
 
     initApp() {
-        // Initialize map
         CoffeeMap.init();
 
-        // Start location tracking
         LocationService.start(pos => {
             CoffeeMap.updateUserLocation(pos.lat, pos.lng, pos.accuracy);
         });
@@ -55,14 +51,18 @@ const app = {
         LocationService.alertRadius = radius;
         LocationService.proximityAlerts = proximityEnabled;
 
-        // Load Google API key if saved
+        // Load Google API key
         const googleKey = localStorage.getItem('google_api_key');
-        if (googleKey) Geocoding.setGoogleApiKey(googleKey);
+        if (googleKey) {
+            Geocoding.setGoogleApiKey(googleKey);
+            const keyInput = document.getElementById('setting-google-key');
+            if (keyInput) keyInput.value = googleKey;
+        }
 
         // Render existing data
         this.renderMarkers();
         this.renderList();
-        this.renderAccountReview();
+        this.renderRecentAdds();
         this.updateStats();
     },
 
@@ -79,7 +79,6 @@ const app = {
             const saved = localStorage.getItem('coffee_accounts');
             if (saved) {
                 this.accounts = JSON.parse(saved);
-                // Restore Date objects
                 this.accounts.forEach(a => {
                     if (a.followTimestamp) a.followTimestamp = new Date(a.followTimestamp);
                 });
@@ -97,208 +96,196 @@ const app = {
     switchTab(tab) {
         this.currentTab = tab;
 
-        // Update tab buttons
         document.querySelectorAll('.tab').forEach(t => {
             t.classList.toggle('active', t.dataset.tab === tab);
         });
 
-        // Update panels
         document.querySelectorAll('.tab-panel').forEach(p => {
             p.classList.toggle('active', p.id === `panel-${tab}`);
         });
 
-        // Refresh map when switching to map tab
-        if (tab === 'map') {
-            CoffeeMap.refresh();
-        }
-
-        // Refresh list when switching to list tab
-        if (tab === 'list') {
-            this.renderList();
-        }
-
-        // Update stats when switching to settings
-        if (tab === 'settings') {
-            this.updateStats();
-        }
+        if (tab === 'map') CoffeeMap.refresh();
+        if (tab === 'list') this.renderList();
+        if (tab === 'add') this.renderRecentAdds();
+        if (tab === 'settings') this.updateStats();
     },
 
     // ========================
-    // Instagram Import
+    // Quick Add (paste / type Instagram handle)
     // ========================
 
-    async handleFileImport(event) {
-        const file = event.target.files[0];
-        if (!file) return;
+    extractHandle(input) {
+        if (!input) return null;
+        input = input.trim();
 
-        const statusEl = document.getElementById('import-status');
-        statusEl.classList.remove('hidden', 'success', 'error');
-        statusEl.classList.add('loading');
-        statusEl.textContent = 'Parsing file...';
+        // Extract from Instagram URL (various formats)
+        const urlMatch = input.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9_.]+)/i);
+        if (urlMatch) return urlMatch[1].toLowerCase();
 
+        // Strip @ prefix
+        if (input.startsWith('@')) input = input.substring(1);
+
+        // Validate as a handle
+        if (/^[A-Za-z0-9_.]{1,30}$/.test(input)) return input.toLowerCase();
+
+        return null;
+    },
+
+    async quickAddHandle(handleOverride) {
+        const inputEl = document.getElementById('quick-add-input');
+        const statusEl = document.getElementById('quick-add-status');
+        const raw = handleOverride || inputEl.value;
+        const handle = this.extractHandle(raw);
+
+        if (!handle) {
+            statusEl.className = 'add-status error';
+            statusEl.textContent = 'Could not find a username. Paste an Instagram link or type a handle.';
+            return;
+        }
+
+        // Check for duplicate
+        if (this.accounts.some(a => a.username === handle)) {
+            statusEl.className = 'add-status success';
+            statusEl.textContent = `@${handle} is already in your list!`;
+
+            const existing = this.accounts.find(a => a.username === handle);
+            if (existing && existing.location) {
+                setTimeout(() => {
+                    this.switchTab('map');
+                    CoffeeMap.flyTo(existing.location.latitude, existing.location.longitude);
+                }, 600);
+            }
+            return;
+        }
+
+        // Show loading
+        statusEl.className = 'add-status loading';
+        statusEl.textContent = `Looking up @${handle}...`;
+
+        // Create account entry
+        const account = {
+            username: handle,
+            profileURL: `https://www.instagram.com/${handle}/`,
+            followTimestamp: new Date(),
+            isCoffeeShop: true,
+            isHidden: false,
+            location: null,
+            geocodingStatus: 'pending',
+        };
+
+        this.accounts.push(account);
+        this.saveState();
+
+        // Geocode immediately
         try {
-            const imported = await InstagramImport.parseFile(file);
-
-            if (imported.length === 0) {
-                statusEl.classList.remove('loading');
-                statusEl.classList.add('error');
-                statusEl.textContent = 'No accounts found in this file.';
-                return;
-            }
-
-            // Merge with existing, skip duplicates
-            let newCount = 0;
-            let dupeCount = 0;
-
-            for (const account of imported) {
-                const exists = this.accounts.some(a => a.username === account.username);
-                if (exists) {
-                    dupeCount++;
-                } else {
-                    this.accounts.push(account);
-                    newCount++;
-                }
-            }
-
+            await Geocoding.geocodeOne(account, LocationService.currentPosition);
             this.saveState();
-
-            statusEl.classList.remove('loading');
-            statusEl.classList.add('success');
-            statusEl.innerHTML = `&#10003; Import complete! ${newCount} new accounts imported.` +
-                (dupeCount > 0 ? ` ${dupeCount} duplicates skipped.` : '');
-
-            this.renderAccountReview();
-            this.renderMarkers();
-            this.renderList();
-            this.updateStats();
-
         } catch (e) {
-            statusEl.classList.remove('loading');
-            statusEl.classList.add('error');
-            statusEl.textContent = e.message;
+            console.warn('Geocoding failed for @' + handle, e);
+            account.geocodingStatus = 'failed';
+            this.saveState();
         }
 
-        // Reset file input so same file can be re-imported
-        event.target.value = '';
+        // Update all UI
+        this.renderMarkers();
+        this.renderList();
+        this.renderRecentAdds();
+        this.updateStats();
+
+        if (account.location) {
+            const name = account.location.displayName || this.formatName(handle);
+            statusEl.className = 'add-status success';
+            statusEl.innerHTML = `&#9989; <strong>${this.escapeHtml(name)}</strong> added and located!`;
+            setTimeout(() => {
+                this.switchTab('map');
+                CoffeeMap.flyTo(account.location.latitude, account.location.longitude);
+            }, 1200);
+        } else {
+            statusEl.className = 'add-status error';
+            statusEl.textContent = `@${handle} added, but location couldn't be found. You can retry from Settings.`;
+        }
+
+        inputEl.value = '';
+    },
+
+    async pasteFromClipboard() {
+        const inputEl = document.getElementById('quick-add-input');
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                inputEl.value = text;
+                this.quickAddHandle(text);
+            }
+        } catch (e) {
+            // Clipboard API blocked (common on iOS) — fall back to prompt
+            const text = prompt('Paste an Instagram URL or handle:');
+            if (text) {
+                inputEl.value = text;
+                this.quickAddHandle(text);
+            }
+        }
+    },
+
+    handleShareTarget() {
+        const params = new URLSearchParams(window.location.search);
+        const sharedText = params.get('text') || params.get('url') || params.get('title') || '';
+
+        if (!sharedText) return;
+
+        // Clean URL so reload doesn't re-trigger
+        window.history.replaceState({}, '', '/');
+
+        const handle = this.extractHandle(sharedText);
+        if (handle) {
+            // Auto-complete onboarding if shared from another app
+            if (!localStorage.getItem('onboarding_complete')) {
+                this.completeOnboarding();
+            }
+            this.switchTab('add');
+            const inputEl = document.getElementById('quick-add-input');
+            if (inputEl) inputEl.value = sharedText;
+            this.quickAddHandle(sharedText);
+        }
     },
 
     // ========================
-    // Account Review
+    // Recently Added (Add tab)
     // ========================
 
-    renderAccountReview() {
-        const container = document.getElementById('account-review');
-        const listEl = document.getElementById('account-list');
+    renderRecentAdds() {
+        const container = document.getElementById('add-recent');
+        const listEl = document.getElementById('add-recent-list');
+        if (!container || !listEl) return;
 
-        if (this.accounts.length === 0) {
+        const recent = [...this.accounts]
+            .sort((a, b) => new Date(b.followTimestamp) - new Date(a.followTimestamp))
+            .slice(0, 10);
+
+        if (recent.length === 0) {
             container.classList.add('hidden');
             return;
         }
 
         container.classList.remove('hidden');
-        document.getElementById('account-count').textContent = this.accounts.length;
 
-        const coffeeCount = this.accounts.filter(a => a.isCoffeeShop).length;
-        document.getElementById('coffee-count').textContent = `${coffeeCount} coffee shops`;
-
-        // Render account rows
-        listEl.innerHTML = this.accounts.map((account, index) => {
+        listEl.innerHTML = recent.map(account => {
+            const name = account.location?.displayName || this.formatName(account.username);
             const statusClass = account.geocodingStatus;
-            const statusText = this.getStatusText(account);
+            const statusText = account.geocodingStatus === 'resolved'
+                ? (account.location?.city || 'Located')
+                : account.geocodingStatus === 'failed' ? 'Not found' : 'Pending';
 
             return `
-                <div class="account-row">
-                    <div class="account-info">
-                        <span class="account-username">@${this.escapeHtml(account.username)}</span>
-                        <span class="account-status">
-                            <span class="status-dot ${statusClass}"></span>
-                            ${statusText}
-                        </span>
+                <div class="add-recent-item" onclick="app.showDetail(app.accounts.find(a => a.username === '${this.escapeHtml(account.username)}'))">
+                    <div class="add-recent-icon">&#9749;</div>
+                    <div class="add-recent-info">
+                        <div class="add-recent-name">${this.escapeHtml(name)}</div>
+                        <div class="add-recent-meta">@${this.escapeHtml(account.username)}</div>
                     </div>
-                    <label class="switch">
-                        <input type="checkbox" ${account.isCoffeeShop ? 'checked' : ''}
-                               onchange="app.toggleCoffeeShop(${index})" />
-                        <span class="slider"></span>
-                    </label>
+                    <div class="add-recent-status ${statusClass}">${statusText}</div>
                 </div>
             `;
         }).join('');
-
-        // Update geocode button
-        const pendingCount = this.accounts.filter(a =>
-            a.isCoffeeShop && !a.isHidden && a.geocodingStatus === 'pending'
-        ).length;
-
-        const btn = document.getElementById('btn-geocode');
-        if (pendingCount > 0) {
-            btn.classList.remove('hidden');
-            btn.textContent = `🔍 Find Locations (${pendingCount} pending)`;
-            btn.disabled = false;
-        } else {
-            btn.style.display = coffeeCount > 0 && this.accounts.some(a => a.geocodingStatus === 'pending') ? '' : 'none';
-        }
-    },
-
-    toggleCoffeeShop(index) {
-        this.accounts[index].isCoffeeShop = !this.accounts[index].isCoffeeShop;
-        if (this.accounts[index].isCoffeeShop && !this.accounts[index].location) {
-            this.accounts[index].geocodingStatus = 'pending';
-        }
-        this.saveState();
-        this.renderAccountReview();
-        this.renderMarkers();
-        this.renderList();
-        this.updateStats();
-    },
-
-    getStatusText(account) {
-        switch (account.geocodingStatus) {
-            case 'resolved': return account.location?.city || 'Located';
-            case 'failed': return 'Location not found';
-            case 'pending': return 'Pending';
-            default: return '';
-        }
-    },
-
-    // ========================
-    // Geocoding
-    // ========================
-
-    async startGeocoding() {
-        const btn = document.getElementById('btn-geocode');
-        btn.disabled = true;
-        btn.textContent = 'Finding locations...';
-
-        const statusEl = document.getElementById('geocoding-status');
-        statusEl.classList.remove('hidden');
-
-        await Geocoding.geocodeBatch(
-            this.accounts,
-            LocationService.currentPosition,
-            (progress) => {
-                // Update progress UI
-                const fill = document.getElementById('geocoding-progress-fill');
-                const text = document.getElementById('geocoding-progress-text');
-                const current = document.getElementById('geocoding-current');
-
-                fill.style.width = `${progress.progress * 100}%`;
-                text.textContent = `${progress.completed}/${progress.total}`;
-                current.textContent = progress.current ? `Looking up @${progress.current}...` : '';
-
-                // Save and update markers as we go
-                this.saveState();
-                this.renderMarkers();
-            }
-        );
-
-        statusEl.classList.add('hidden');
-        btn.disabled = false;
-
-        this.saveState();
-        this.renderAccountReview();
-        this.renderMarkers();
-        this.renderList();
-        this.updateStats();
     },
 
     // ========================
@@ -325,22 +312,22 @@ const app = {
 
     renderList() {
         const listEl = document.getElementById('coffee-list');
-        const coffeeAccounts = this.accounts.filter(a => a.isCoffeeShop && !a.isHidden);
-        const located = coffeeAccounts.filter(a => a.location);
-        const unresolved = coffeeAccounts.filter(a => !a.location);
+        const allPlaces = this.accounts.filter(a => a.isCoffeeShop && !a.isHidden);
+        const located = allPlaces.filter(a => a.location);
+        const unresolved = allPlaces.filter(a => !a.location);
 
-        if (coffeeAccounts.length === 0) {
+        if (allPlaces.length === 0) {
             listEl.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">&#9749;</div>
-                    <h3>No Coffee Shops Yet</h3>
-                    <p>Import your Instagram data to find coffee shops you follow.</p>
+                    <h3>No Places Yet</h3>
+                    <p>Tap the <strong>Add</strong> tab to save a place from Instagram.</p>
                 </div>
             `;
             return;
         }
 
-        // Sort located by distance if we have user location
+        // Sort by distance if user location available
         if (LocationService.currentPosition) {
             located.sort((a, b) => {
                 const distA = LocationService.distanceTo(a.location.latitude, a.location.longitude);
@@ -351,9 +338,8 @@ const app = {
 
         let html = '';
 
-        // Located accounts
         for (const account of located) {
-            const name = account.location.displayName || LocationService.formatName(account.username);
+            const name = account.location.displayName || this.formatName(account.username);
             const dist = LocationService.distanceTo(account.location.latitude, account.location.longitude);
             const distText = dist !== null ? LocationService.formatDistance(dist) : '';
             const rating = account.location.rating;
@@ -369,7 +355,7 @@ const app = {
                         </div>
                         ${rating ? `
                             <div class="list-rating">
-                                ${'★'.repeat(Math.round(rating))}${'☆'.repeat(5 - Math.round(rating))}
+                                ${'&#9733;'.repeat(Math.round(rating))}${'&#9734;'.repeat(5 - Math.round(rating))}
                                 <span style="color:#999; margin-left:4px">${rating.toFixed(1)}</span>
                             </div>
                         ` : ''}
@@ -379,11 +365,10 @@ const app = {
             `;
         }
 
-        // Unresolved section
         if (unresolved.length > 0) {
             html += `<div class="list-section">Not Yet Located (${unresolved.length})</div>`;
             for (const account of unresolved) {
-                const statusIcon = account.geocodingStatus === 'failed' ? '⚠️' : '⏳';
+                const statusIcon = account.geocodingStatus === 'failed' ? '&#9888;&#65039;' : '&#9203;';
                 const statusText = account.geocodingStatus === 'failed' ? 'Location not found' : 'Pending';
 
                 html += `
@@ -411,15 +396,12 @@ const app = {
         const modal = document.getElementById('detail-modal');
         const body = document.getElementById('detail-body');
         const loc = account.location;
-        const name = loc?.displayName || LocationService.formatName(account.username);
+        const name = loc?.displayName || this.formatName(account.username);
 
         let distText = '';
-        let travelInfo = '';
         if (loc) {
             const dist = LocationService.distanceTo(loc.latitude, loc.longitude);
-            if (dist !== null) {
-                distText = LocationService.formatDistance(dist);
-            }
+            if (dist !== null) distText = LocationService.formatDistance(dist);
         }
 
         body.innerHTML = `
@@ -429,7 +411,7 @@ const app = {
                 <div class="detail-username">@${this.escapeHtml(account.username)}</div>
                 ${loc?.rating ? `
                     <div class="list-rating" style="justify-content:center; margin-top:8px">
-                        ${'★'.repeat(Math.round(loc.rating))}${'☆'.repeat(5 - Math.round(loc.rating))}
+                        ${'&#9733;'.repeat(Math.round(loc.rating))}${'&#9734;'.repeat(5 - Math.round(loc.rating))}
                         <span style="color:#999; margin-left:4px">${loc.rating.toFixed(1)}</span>
                     </div>
                 ` : ''}
@@ -441,7 +423,7 @@ const app = {
                 <div class="detail-info">
                     ${loc.address ? `
                         <div class="detail-row">
-                            <div class="detail-row-icon">📍</div>
+                            <div class="detail-row-icon">&#128205;</div>
                             <div class="detail-row-content">
                                 <div class="detail-row-label">Address</div>
                                 <div class="detail-row-value">${this.escapeHtml(loc.address)}</div>
@@ -450,7 +432,7 @@ const app = {
                     ` : ''}
                     ${loc.phoneNumber ? `
                         <div class="detail-row">
-                            <div class="detail-row-icon">📞</div>
+                            <div class="detail-row-icon">&#128222;</div>
                             <div class="detail-row-content">
                                 <div class="detail-row-label">Phone</div>
                                 <div class="detail-row-value"><a href="tel:${loc.phoneNumber}">${this.escapeHtml(loc.phoneNumber)}</a></div>
@@ -459,7 +441,7 @@ const app = {
                     ` : ''}
                     ${loc.websiteURL ? `
                         <div class="detail-row">
-                            <div class="detail-row-icon">🌐</div>
+                            <div class="detail-row-icon">&#127760;</div>
                             <div class="detail-row-content">
                                 <div class="detail-row-label">Website</div>
                                 <div class="detail-row-value"><a href="${loc.websiteURL}" target="_blank" rel="noopener">${this.escapeHtml(new URL(loc.websiteURL).hostname)}</a></div>
@@ -468,7 +450,7 @@ const app = {
                     ` : ''}
                     ${distText ? `
                         <div class="detail-row">
-                            <div class="detail-row-icon">🚶</div>
+                            <div class="detail-row-icon">&#128694;</div>
                             <div class="detail-row-content">
                                 <div class="detail-row-label">Distance</div>
                                 <div class="detail-row-value">${distText}</div>
@@ -481,18 +463,20 @@ const app = {
             <div class="detail-actions">
                 ${loc ? `
                     <button class="btn-directions" onclick="app.getDirections(${loc.latitude}, ${loc.longitude})">
-                        🧭 Get Directions
+                        &#129517; Get Directions
                     </button>
                 ` : ''}
                 <button class="btn-instagram" onclick="window.open('${account.profileURL}', '_blank')">
-                    📷 View on Instagram
+                    &#128247; View on Instagram
+                </button>
+                <button class="btn btn-danger" style="margin-top:4px;" onclick="app.removePlace('${this.escapeHtml(account.username)}')">
+                    Remove Place
                 </button>
             </div>
         `;
 
         modal.classList.remove('hidden');
 
-        // Create detail mini-map
         if (loc) {
             setTimeout(() => {
                 CoffeeMap.createDetailMap('detail-map-container', loc.latitude, loc.longitude);
@@ -509,22 +493,26 @@ const app = {
     },
 
     getDirections(lat, lng) {
-        // Close modal and switch to map
         this.closeDetail();
         this.switchTab('map');
-
-        // Show route on map
         CoffeeMap.showRoute(lat, lng);
 
-        // Also open in external maps app (Google Maps or Apple Maps)
         const pos = LocationService.currentPosition;
-        if (pos) {
-            const url = `https://www.google.com/maps/dir/${pos.lat},${pos.lng}/${lat},${lng}`;
-            window.open(url, '_blank');
-        } else {
-            const url = `https://www.google.com/maps/dir//${lat},${lng}`;
-            window.open(url, '_blank');
-        }
+        const url = pos
+            ? `https://www.google.com/maps/dir/${pos.lat},${pos.lng}/${lat},${lng}`
+            : `https://www.google.com/maps/dir//${lat},${lng}`;
+        window.open(url, '_blank');
+    },
+
+    removePlace(username) {
+        if (!confirm(`Remove @${username} from your saved places?`)) return;
+        this.accounts = this.accounts.filter(a => a.username !== username);
+        this.saveState();
+        this.closeDetail();
+        this.renderMarkers();
+        this.renderList();
+        this.renderRecentAdds();
+        this.updateStats();
     },
 
     // ========================
@@ -536,15 +524,12 @@ const app = {
         const btn = document.getElementById('btn-proximity');
         const radiusSetting = document.getElementById('radius-setting');
 
-        // Toggle based on which element triggered
         const enabled = checkbox.checked;
-
         await LocationService.enableProximityAlerts(enabled);
 
         checkbox.checked = enabled;
         btn.classList.toggle('active', enabled);
         radiusSetting.style.display = enabled ? '' : 'none';
-
         localStorage.setItem('proximity_enabled', enabled.toString());
     },
 
@@ -559,189 +544,69 @@ const app = {
     // Settings
     // ========================
 
+    saveGoogleApiKey(value) {
+        const key = value.trim();
+        if (key) {
+            localStorage.setItem('google_api_key', key);
+            Geocoding.setGoogleApiKey(key);
+        } else {
+            localStorage.removeItem('google_api_key');
+            Geocoding.setGoogleApiKey(null);
+        }
+    },
+
     updateStats() {
-        const coffee = this.accounts.filter(a => a.isCoffeeShop && !a.isHidden);
-        const located = coffee.filter(a => a.location);
-        const pending = coffee.filter(a => a.geocodingStatus === 'pending');
+        const all = this.accounts.filter(a => a.isCoffeeShop && !a.isHidden);
+        const located = all.filter(a => a.location);
+        const pending = all.filter(a => a.geocodingStatus === 'pending');
+        const failed = all.filter(a => a.geocodingStatus === 'failed');
 
         const statCoffee = document.getElementById('stat-coffee');
         const statLocated = document.getElementById('stat-located');
         const statPending = document.getElementById('stat-pending');
 
-        if (statCoffee) statCoffee.textContent = coffee.length;
+        if (statCoffee) statCoffee.textContent = all.length;
         if (statLocated) statLocated.textContent = located.length;
-        if (statPending) statPending.textContent = pending.length;
+        if (statPending) statPending.textContent = pending.length + failed.length;
+
+        // Show retry button if there are failed geocodes
+        const retryBtn = document.getElementById('btn-retry-geocode');
+        if (retryBtn) {
+            retryBtn.style.display = failed.length > 0 ? '' : 'none';
+            retryBtn.textContent = `Retry Failed Locations (${failed.length})`;
+        }
+    },
+
+    async retryFailedGeocoding() {
+        const failed = this.accounts.filter(a => a.geocodingStatus === 'failed');
+        if (failed.length === 0) return;
+
+        const btn = document.getElementById('btn-retry-geocode');
+        btn.disabled = true;
+        btn.textContent = 'Retrying...';
+
+        // Reset failed accounts to pending
+        failed.forEach(a => { a.geocodingStatus = 'pending'; });
+
+        await Geocoding.geocodeBatch(this.accounts, LocationService.currentPosition, () => {});
+        this.saveState();
+        this.renderMarkers();
+        this.renderList();
+        this.renderRecentAdds();
+        this.updateStats();
+
+        btn.disabled = false;
     },
 
     clearAllData() {
-        if (!confirm('Are you sure? This will remove all imported accounts and locations.')) return;
+        if (!confirm('Are you sure? This will remove all saved places.')) return;
 
         this.accounts = [];
         this.saveState();
         CoffeeMap.clearMarkers();
         this.renderList();
-        this.renderAccountReview();
+        this.renderRecentAdds();
         this.updateStats();
-
-        const statusEl = document.getElementById('import-status');
-        statusEl.classList.remove('hidden', 'loading', 'error');
-        statusEl.classList.add('success');
-        statusEl.textContent = 'All data cleared.';
-    },
-
-    // ========================
-    // Quick Add (from Instagram share / paste / type)
-    // ========================
-
-    /**
-     * Extracts an Instagram handle from various input formats:
-     * - @username
-     * - username
-     * - https://www.instagram.com/username/
-     * - https://instagram.com/username?igsh=...
-     * - instagram.com/username
-     */
-    extractHandle(input) {
-        if (!input) return null;
-        input = input.trim();
-
-        // If the input contains an instagram URL, extract the handle
-        const urlMatch = input.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9_.]+)/i);
-        if (urlMatch) return urlMatch[1].toLowerCase();
-
-        // Strip @ prefix
-        if (input.startsWith('@')) input = input.substring(1);
-
-        // Validate as a handle (letters, numbers, dots, underscores)
-        if (/^[A-Za-z0-9_.]{1,30}$/.test(input)) return input.toLowerCase();
-
-        return null;
-    },
-
-    async quickAddHandle(handleOverride) {
-        const inputEl = document.getElementById('quick-add-input');
-        const statusEl = document.getElementById('quick-add-status');
-        const raw = handleOverride || inputEl.value;
-        const handle = this.extractHandle(raw);
-
-        if (!handle) {
-            statusEl.classList.remove('hidden', 'success', 'loading');
-            statusEl.classList.add('error');
-            statusEl.textContent = 'Could not find an Instagram username. Paste a profile URL or type a handle.';
-            return;
-        }
-
-        // Check for duplicate
-        if (this.accounts.some(a => a.username === handle)) {
-            statusEl.classList.remove('hidden', 'loading', 'error');
-            statusEl.classList.add('success');
-            statusEl.textContent = `@${handle} is already in your list!`;
-
-            // Highlight existing account on map
-            const existing = this.accounts.find(a => a.username === handle);
-            if (existing && existing.location) {
-                this.switchTab('map');
-                CoffeeMap.flyTo(existing.location.latitude, existing.location.longitude);
-            }
-            return;
-        }
-
-        // Show loading
-        statusEl.classList.remove('hidden', 'success', 'error');
-        statusEl.classList.add('loading');
-        statusEl.textContent = `Adding @${handle}...`;
-
-        // Create account entry
-        const account = {
-            username: handle,
-            profileURL: `https://www.instagram.com/${handle}/`,
-            followTimestamp: new Date(),
-            isCoffeeShop: true,
-            isHidden: false,
-            location: null,
-            geocodingStatus: 'pending',
-        };
-
-        this.accounts.push(account);
-        this.saveState();
-
-        // Try geocoding immediately
-        try {
-            await Geocoding.geocodeBatch(
-                this.accounts,
-                LocationService.currentPosition,
-                () => {} // silent progress
-            );
-            this.saveState();
-        } catch (e) {
-            console.warn('Quick-add geocoding failed:', e);
-        }
-
-        // Update UI
-        this.renderAccountReview();
-        this.renderMarkers();
-        this.renderList();
-        this.updateStats();
-
-        const added = this.accounts.find(a => a.username === handle);
-        if (added && added.location) {
-            statusEl.classList.remove('loading');
-            statusEl.classList.add('success');
-            statusEl.textContent = `☕ @${handle} added and located!`;
-            // Pan to the new marker
-            setTimeout(() => {
-                this.switchTab('map');
-                CoffeeMap.flyTo(added.location.latitude, added.location.longitude);
-            }, 800);
-        } else {
-            statusEl.classList.remove('loading');
-            statusEl.classList.add('success');
-            statusEl.textContent = `@${handle} added! Location pending — try "Find Locations" to geocode.`;
-        }
-
-        inputEl.value = '';
-    },
-
-    async pasteFromClipboard() {
-        const inputEl = document.getElementById('quick-add-input');
-        try {
-            const text = await navigator.clipboard.readText();
-            if (text) {
-                inputEl.value = text;
-                this.quickAddHandle(text);
-            }
-        } catch (e) {
-            // Clipboard API may be blocked — fall back to prompt
-            const text = prompt('Paste an Instagram URL or handle:');
-            if (text) {
-                inputEl.value = text;
-                this.quickAddHandle(text);
-            }
-        }
-    },
-
-    /**
-     * Handle incoming share target or URL params.
-     * Called on init — checks if the app was opened via share_target or a direct URL
-     * like ?url=https://instagram.com/somecoffee or ?text=...
-     */
-    handleShareTarget() {
-        const params = new URLSearchParams(window.location.search);
-        const sharedText = params.get('text') || params.get('url') || params.get('title') || '';
-
-        if (!sharedText) return;
-
-        // Clean URL so reload doesn't re-trigger
-        window.history.replaceState({}, '', '/');
-
-        const handle = this.extractHandle(sharedText);
-        if (handle) {
-            // Switch to import tab and auto-fill + auto-add
-            this.switchTab('import');
-            const inputEl = document.getElementById('quick-add-input');
-            if (inputEl) inputEl.value = sharedText;
-            this.quickAddHandle(sharedText);
-        }
     },
 
     // ========================
@@ -752,6 +617,12 @@ const app = {
         return this.accounts.filter(a =>
             a.isCoffeeShop && !a.isHidden && a.location
         );
+    },
+
+    formatName(username) {
+        return username
+            .replace(/[_.]/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase());
     },
 
     escapeHtml(text) {

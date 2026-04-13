@@ -31,28 +31,28 @@
         <div class="onboarding-content">
             <div class="onboarding-icon">&#9749;</div>
             <h1>CoffeeMap</h1>
-            <p class="onboarding-subtitle">Discover coffee shops you already love</p>
+            <p class="onboarding-subtitle">Map the places you discover on Instagram</p>
 
             <div class="onboarding-features">
                 <div class="feature">
-                    <span class="feature-icon">&#128229;</span>
+                    <span class="feature-icon">&#128279;</span>
                     <div>
-                        <strong>Import from Instagram</strong>
-                        <p>Use your Instagram data export to find coffee shops and roasteries you follow.</p>
+                        <strong>Share or Paste</strong>
+                        <p>Copy a link from Instagram and paste it here to save a coffee shop, restaurant, or bar.</p>
                     </div>
                 </div>
                 <div class="feature">
                     <span class="feature-icon">&#128506;</span>
                     <div>
                         <strong>See Them on a Map</strong>
-                        <p>All your followed coffee accounts, mapped to their real-world locations.</p>
+                        <p>Every place you save gets mapped to its real-world location automatically.</p>
                     </div>
                 </div>
                 <div class="feature">
                     <span class="feature-icon">&#128205;</span>
                     <div>
                         <strong>Get Nearby Alerts</strong>
-                        <p>Receive a notification when you're near a coffee shop you follow.</p>
+                        <p>Receive a notification when you're near a saved place.</p>
                     </div>
                 </div>
             </div>
@@ -86,9 +86,9 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 <span>List</span>
             </button>
-            <button class="tab" data-tab="import" onclick="app.switchTab('import')">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                <span>Import</span>
+            <button class="tab" data-tab="add" onclick="app.switchTab('add')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                <span>Add</span>
             </button>
             <button class="tab" data-tab="settings" onclick="app.switchTab('settings')">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -101,17 +101,9 @@
             <!-- Map panel -->
             <div id="panel-map" class="tab-panel active">
                 <div class="map-search">
-                    <input type="text" id="map-search" placeholder="Search coffee shops..." oninput="app.filterAccounts(this.value)" />
+                    <input type="text" id="map-search" placeholder="Search saved places..." oninput="app.filterAccounts(this.value)" />
                 </div>
                 <div id="map" class="map-container"></div>
-                <!-- Geocoding floating status -->
-                <div id="geocoding-status" class="geocoding-status hidden">
-                    <div class="geocoding-progress">
-                        <div class="progress-bar"><div class="progress-fill" id="geocoding-progress-fill"></div></div>
-                        <span id="geocoding-progress-text">0/0</span>
-                    </div>
-                    <span id="geocoding-current"></span>
-                </div>
             </div>
 
             <!-- List panel -->
@@ -120,64 +112,73 @@
                     <div id="coffee-list" class="coffee-list">
                         <div class="empty-state">
                             <div class="empty-icon">&#9749;</div>
-                            <h3>No Coffee Shops Yet</h3>
-                            <p>Import your Instagram data to find coffee shops you follow.</p>
+                            <h3>No Places Yet</h3>
+                            <p>Tap the <strong>Add</strong> tab to save a place from Instagram.</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Import panel -->
-            <div id="panel-import" class="tab-panel">
-                <div class="import-container">
-                    <!-- Quick Add from Instagram -->
-                    <div class="card quick-add-card">
-                        <h3>☕ Quick Add from Instagram</h3>
-                        <p class="setting-hint">Paste an Instagram URL or username from the share button, or type a handle directly.</p>
-                        <div class="quick-add-row">
-                            <input type="text" id="quick-add-input" class="quick-add-input"
-                                   placeholder="@username or instagram.com/username"
-                                   autocapitalize="none" autocorrect="off" spellcheck="false" />
-                            <button class="btn btn-primary" id="btn-quick-add" onclick="app.quickAddHandle()">Add</button>
+            <!-- Add panel -->
+            <div id="panel-add" class="tab-panel">
+                <div class="add-container">
+                    <!-- Hero add section -->
+                    <div class="add-hero">
+                        <div class="add-hero-icon">&#128279;</div>
+                        <h2>Add a Place</h2>
+                        <p>Paste an Instagram link or type a username</p>
+                    </div>
+
+                    <!-- Input area -->
+                    <div class="add-input-area">
+                        <div class="add-input-row">
+                            <input type="text" id="quick-add-input"
+                                   placeholder="@username or paste Instagram link"
+                                   autocapitalize="none" autocorrect="off" spellcheck="false"
+                                   onkeydown="if(event.key==='Enter') app.quickAddHandle()" />
+                            <button class="btn btn-primary btn-add" id="btn-quick-add" onclick="app.quickAddHandle()">Add</button>
                         </div>
-                        <button class="btn btn-sm btn-outline" id="btn-paste-clipboard" onclick="app.pasteFromClipboard()" style="margin-top:8px; width:100%;">
-                            📋 Paste from Clipboard
+                        <button class="btn btn-paste" id="btn-paste-clipboard" onclick="app.pasteFromClipboard()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Paste from Clipboard
                         </button>
-                        <div id="quick-add-status" class="import-status hidden" style="margin-top:12px;"></div>
                     </div>
 
-                    <div class="card">
-                        <h3>&#8505; Bulk Import from Data Export</h3>
-                        <ol class="import-steps">
-                            <li>Open Instagram &rarr; Settings &rarr; Your Activity &rarr; Download Your Information</li>
-                            <li>Request your data in <strong>JSON</strong> format</li>
-                            <li>Wait for Instagram to prepare your download (may take up to 48 hours)</li>
-                            <li>Download and extract the ZIP file</li>
-                            <li>Find <code>following.json</code> in <code>connections/followers_and_following/</code></li>
-                            <li>Click "Import File" below and select that JSON file</li>
-                        </ol>
-                    </div>
+                    <!-- Status message -->
+                    <div id="quick-add-status" class="add-status hidden"></div>
 
-                    <div class="import-actions">
-                        <label class="btn btn-primary btn-lg btn-file">
-                            &#128229; Import File
-                            <input type="file" id="file-input" accept=".json" onchange="app.handleFileImport(event)" hidden />
-                        </label>
-                    </div>
-
-                    <div id="import-status" class="import-status hidden"></div>
-
-                    <!-- Account review list -->
-                    <div id="account-review" class="account-review hidden">
-                        <div class="review-header">
-                            <h3>Your Accounts (<span id="account-count">0</span>)</h3>
-                            <span id="coffee-count" class="badge">0 coffee shops</span>
+                    <!-- How it works -->
+                    <div class="add-how-it-works">
+                        <h3>How it works</h3>
+                        <div class="how-steps">
+                            <div class="how-step">
+                                <div class="how-step-num">1</div>
+                                <div>
+                                    <strong>Find a place on Instagram</strong>
+                                    <p>Visit a coffee shop, restaurant, or bar's profile</p>
+                                </div>
+                            </div>
+                            <div class="how-step">
+                                <div class="how-step-num">2</div>
+                                <div>
+                                    <strong>Copy the link</strong>
+                                    <p>Tap the share button and select "Copy Link"</p>
+                                </div>
+                            </div>
+                            <div class="how-step">
+                                <div class="how-step-num">3</div>
+                                <div>
+                                    <strong>Paste it here</strong>
+                                    <p>Tap "Paste from Clipboard" or type the username</p>
+                                </div>
+                            </div>
                         </div>
-                        <p class="review-hint">Toggle accounts that are coffee shops or roasteries. Auto-detected by username keywords.</p>
-                        <div id="account-list" class="account-list"></div>
-                        <button class="btn btn-success btn-lg" id="btn-geocode" onclick="app.startGeocoding()">
-                            &#128270; Find Locations
-                        </button>
+                    </div>
+
+                    <!-- Recent adds -->
+                    <div id="add-recent" class="add-recent hidden">
+                        <h3>Recently Added</h3>
+                        <div id="add-recent-list" class="add-recent-list"></div>
                     </div>
                 </div>
             </div>
@@ -188,7 +189,7 @@
                     <div class="card">
                         <h3>Proximity Alerts</h3>
                         <div class="setting-row">
-                            <label>Enable alerts when near coffee shops</label>
+                            <label>Enable alerts when near saved places</label>
                             <label class="switch">
                                 <input type="checkbox" id="setting-proximity" onchange="app.toggleProximityAlerts()" />
                                 <span class="slider"></span>
@@ -199,13 +200,23 @@
                             <input type="range" id="setting-radius" min="100" max="1000" step="50" value="200"
                                    oninput="app.updateRadius(this.value)" />
                         </div>
-                        <p class="setting-hint">You'll receive a browser notification when you're within range of a followed coffee shop.</p>
+                        <p class="setting-hint">You'll receive a browser notification when you're within range of a saved place.</p>
+                    </div>
+
+                    <div class="card">
+                        <h3>Google Places API</h3>
+                        <p class="setting-hint" style="margin-top:0; margin-bottom:8px;">Adding a Google Places API key improves location accuracy, ratings, phone numbers, and websites.</p>
+                        <div class="setting-row" style="gap:8px;">
+                            <input type="text" id="setting-google-key" placeholder="API Key"
+                                   style="flex:1; padding:10px; border:1px solid var(--border); border-radius:8px; font-size:0.85rem;"
+                                   onchange="app.saveGoogleApiKey(this.value)" />
+                        </div>
                     </div>
 
                     <div class="card">
                         <h3>Data</h3>
                         <div class="setting-row">
-                            <span>Coffee shops</span>
+                            <span>Saved places</span>
                             <span id="stat-coffee" class="stat">0</span>
                         </div>
                         <div class="setting-row">
@@ -216,13 +227,14 @@
                             <span>Pending</span>
                             <span id="stat-pending" class="stat">0</span>
                         </div>
-                        <button class="btn btn-danger" onclick="app.clearAllData()">Clear All Data</button>
+                        <button class="btn btn-success" id="btn-retry-geocode" onclick="app.retryFailedGeocoding()" style="margin-top:8px; display:none;">Retry Failed Locations</button>
+                        <button class="btn btn-danger" onclick="app.clearAllData()" style="margin-top:8px;">Clear All Data</button>
                     </div>
 
                     <div class="card">
                         <h3>About</h3>
-                        <p>CoffeeMap v1.0</p>
-                        <p class="setting-hint">Find coffee shops and roasteries you follow on Instagram, mapped to their real-world locations.</p>
+                        <p>CoffeeMap v1.1</p>
+                        <p class="setting-hint">Discover and map places from Instagram.</p>
                     </div>
                 </div>
             </div>
@@ -246,7 +258,6 @@
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
     <!-- App JS -->
-    <script src="js/import.js"></script>
     <script src="js/geocoding.js"></script>
     <script src="js/location.js"></script>
     <script src="js/map.js"></script>
