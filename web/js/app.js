@@ -7,9 +7,9 @@ const app = {
     currentTab: 'map',
     searchQuery: '',
 
-    // Supabase config — set these to enable cloud sync
-    SUPABASE_URL: '',
-    SUPABASE_ANON_KEY: '',
+    // Supabase config
+    SUPABASE_URL: 'https://tsteippepeiqjozjhsuv.supabase.co',
+    SUPABASE_ANON_KEY: 'sb_publishable_THsOPeqzojtjUbx-agAfyw_Urba03SZ',
 
     // ========================
     // Initialization
